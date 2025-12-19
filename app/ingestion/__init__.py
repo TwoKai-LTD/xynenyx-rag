@@ -1,0 +1,2 @@
+"""RSS feed ingestion pipeline."""
+

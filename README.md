@@ -6,11 +6,14 @@ LlamaIndex RAG service for RSS feed ingestion, content parsing, embedding, and v
 
 The RAG service:
 
-- Ingests RSS feeds from startup/VC news sources
-- Parses and chunks content with metadata extraction
+- Ingests RSS feeds from startup/VC news sources (scheduled and manual)
+- Parses and chunks content with enhanced metadata extraction
 - Generates embeddings via LLM service
 - Stores in Supabase pgvector
-- Provides vector similarity search
+- Provides hybrid search (BM25 + vector) with RRF fusion
+- Cross-encoder reranking for improved relevance
+- Temporal and entity filtering
+- Database-backed feed management
 
 ## Quick Start
 
@@ -54,16 +57,34 @@ docker run -p 8002:8002 --env-file .env xynenyx-rag
 - `POST /feeds/{id}/ingest` - Trigger manual ingestion
 - `DELETE /feeds/{id}` - Remove feed
 
-### Vector Search
+### Vector Search (Advanced)
 
-- `POST /query` - Vector similarity search
+- `POST /query` - Hybrid search with reranking and filtering
   ```json
   {
     "query": "AI startup funding",
-    "top_k": 5,
-    "filter_document_ids": ["optional-doc-id"]
+    "top_k": 10,
+    "use_hybrid_search": true,
+    "use_reranking": true,
+    "rerank_top_n": 20,
+    "date_filter": "last_week",
+    "company_filter": ["Anthropic", "OpenAI"],
+    "investor_filter": ["Andreessen Horowitz"],
+    "sector_filter": ["AI", "FinTech"]
   }
   ```
+
+  **Query Parameters:**
+  - `query` (required) - Search query text
+  - `top_k` (default: 10) - Number of results to return
+  - `use_hybrid_search` (default: true) - Enable hybrid search (BM25 + vector)
+  - `use_reranking` (default: true) - Enable cross-encoder reranking
+  - `rerank_top_n` (default: 20) - Top N results to rerank
+  - `date_filter` (optional) - Temporal filter: `"last_week"`, `"this_month"`, or `{"start_date": "2024-01-01", "end_date": "2024-01-31"}`
+  - `company_filter` (optional) - Filter by company names
+  - `investor_filter` (optional) - Filter by investor names
+  - `sector_filter` (optional) - Filter by sectors/industries
+  - `filter_document_ids` (optional) - Filter by specific document IDs
 
 ### Document Management
 
@@ -99,17 +120,18 @@ poetry run pytest tests/test_ingestion.py -v
 
 1. **RSS Parser** - Parses RSS/Atom feeds using `feedparser`
 2. **HTML Parser** - Extracts main content from article URLs using BeautifulSoup
-3. **Metadata Extractor** - Extracts companies, funding, dates, investors using regex patterns
+3. **Metadata Extractor** - Enhanced extraction of companies, funding (with rounds), dates (dateparser), investors (with roles), sectors (with confidence)
 4. **Chunker** - Splits content into chunks using LlamaIndex SentenceSplitter
 5. **Embedding Generation** - Calls LLM service `/embeddings` endpoint
 6. **Vector Storage** - Stores chunks with embeddings in Supabase pgvector
 
 ### Retrieval
 
-- Vector similarity search using cosine similarity
-- Query embedding generation via LLM service
-- Results filtered by similarity threshold
-- Metadata preserved for source attribution
+- **Hybrid Search:** Combines BM25 (keyword) and vector (semantic) search using Reciprocal Rank Fusion (RRF)
+- **Reranking:** Cross-encoder reranking improves precision on top results
+- **Filtering:** Temporal (date ranges) and entity (company, investor, sector) filtering
+- **Metadata:** Enhanced extraction of companies, funding, dates, investors, sectors with confidence scores
+- **Backward Compatible:** Vector-only search still supported
 
 ## Usage Examples
 
@@ -131,15 +153,30 @@ curl -X POST http://localhost:8002/feeds/{feed_id}/ingest \
   -H "X-User-ID: user-123"
 ```
 
-### Query Vector Search
+### Query Hybrid Search
 
 ```bash
+# Basic hybrid search
 curl -X POST http://localhost:8002/query \
   -H "Content-Type: application/json" \
   -H "X-User-ID: user-123" \
   -d '{
     "query": "AI startup funding rounds",
-    "top_k": 10
+    "top_k": 10,
+    "use_hybrid_search": true,
+    "use_reranking": true
+  }'
+
+# With filters
+curl -X POST http://localhost:8002/query \
+  -H "Content-Type: application/json" \
+  -H "X-User-ID: user-123" \
+  -d '{
+    "query": "funding rounds",
+    "top_k": 5,
+    "date_filter": "last_week",
+    "company_filter": ["Anthropic"],
+    "sector_filter": ["AI"]
   }'
 ```
 
@@ -169,9 +206,13 @@ xynenyx-rag/
 │   │   ├── chunkers.py
 │   │   ├── pipeline.py
 │   │   └── scheduler.py
-│   ├── retrieval/           # Vector retrieval
+│   ├── retrieval/           # Vector retrieval and hybrid search
 │   │   ├── vector_store.py
-│   │   └── retriever.py
+│   │   ├── retriever.py
+│   │   ├── bm25_retriever.py
+│   │   ├── hybrid_retriever.py
+│   │   ├── reranker.py
+│   │   └── filters.py
 │   ├── routers/              # API routes
 │   │   ├── feeds.py
 │   │   ├── query.py

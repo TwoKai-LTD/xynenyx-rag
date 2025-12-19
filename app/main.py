@@ -10,16 +10,40 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import settings
 from app.routers import feeds, query, documents
+from app.ingestion.scheduler import FeedScheduler
 
 logger = logging.getLogger(__name__)
+
+# Global scheduler instance
+feed_scheduler: FeedScheduler | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Context manager for application startup and shutdown events."""
+    global feed_scheduler
+
     logger.info("RAG Service starting up...")
     # Initialize connections, warm up models, etc.
+
+    # Start feed scheduler
+    try:
+        feed_scheduler = FeedScheduler()
+        feed_scheduler.start()
+        logger.info("Feed scheduler started")
+    except Exception as e:
+        logger.error(f"Failed to start feed scheduler: {e}")
+
     yield
+
+    # Stop feed scheduler
+    if feed_scheduler:
+        try:
+            feed_scheduler.stop()
+            logger.info("Feed scheduler stopped")
+        except Exception as e:
+            logger.error(f"Error stopping feed scheduler: {e}")
+
     logger.info("RAG Service shutting down...")
     # Close connections, cleanup resources, etc.
 

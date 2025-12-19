@@ -186,3 +186,109 @@ class SupabaseClient:
         result = query.execute()
         return result.data if result.data else []
 
+    # Feed management methods
+
+    async def create_feed(
+        self,
+        user_id: str,
+        name: str,
+        url: str,
+        update_frequency: str = "hourly",
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Create a feed record.
+
+        Args:
+            user_id: User ID
+            name: Feed name
+            url: Feed URL
+            update_frequency: Update frequency (hourly, daily)
+            metadata: Additional metadata
+
+        Returns:
+            Created feed record
+        """
+        result = (
+            self.client.table("feeds")
+            .insert(
+                {
+                    "user_id": user_id,
+                    "name": name,
+                    "url": url,
+                    "update_frequency": update_frequency,
+                    "status": "active",
+                    "metadata": metadata or {},
+                }
+            )
+            .execute()
+        )
+        return result.data[0] if result.data else {}
+
+    async def get_feed(self, feed_id: UUID) -> Optional[Dict[str, Any]]:
+        """
+        Get a feed by ID.
+
+        Args:
+            feed_id: Feed ID
+
+        Returns:
+            Feed record or None
+        """
+        result = self.client.table("feeds").select("*").eq("id", str(feed_id)).execute()
+        return result.data[0] if result.data else None
+
+    async def list_feeds(
+        self,
+        user_id: Optional[str] = None,
+        status: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> List[Dict[str, Any]]:
+        """
+        List feeds with optional filters.
+
+        Args:
+            user_id: Filter by user ID
+            status: Filter by status
+            limit: Maximum number of results
+            offset: Offset for pagination
+
+        Returns:
+            List of feed records
+        """
+        query = self.client.table("feeds").select("*")
+
+        if user_id:
+            query = query.eq("user_id", user_id)
+        if status:
+            query = query.eq("status", status)
+
+        query = query.order("created_at", desc=True).limit(limit).offset(offset)
+
+        result = query.execute()
+        return result.data if result.data else []
+
+    async def update_feed(
+        self,
+        feed_id: UUID,
+        updates: Dict[str, Any],
+    ) -> None:
+        """
+        Update a feed.
+
+        Args:
+            feed_id: Feed ID
+            updates: Dictionary of fields to update
+        """
+        self.client.table("feeds").update(updates).eq("id", str(feed_id)).execute()
+
+    async def delete_feed(self, feed_id: UUID) -> None:
+        """
+        Delete a feed.
+
+        Args:
+            feed_id: Feed ID
+        """
+        self.client.table("feeds").delete().eq("id", str(feed_id)).execute()
+

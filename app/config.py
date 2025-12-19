@@ -56,6 +56,35 @@ class Settings(BaseSettings):
     default_top_k: int = 10
     min_similarity_score: float = 0.0  # minimum similarity threshold
 
+    # Hybrid search settings
+    use_hybrid_search: bool = True
+    bm25_top_k: int = 10  # Top-k for BM25 retrieval
+    vector_top_k: int = 10  # Top-k for vector retrieval
+    rrf_k: int = 60  # RRF k parameter (higher = more weight to top results)
+
+    # Reranking settings
+    use_reranking: bool = True
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    rerank_top_n: int = 20  # Top N results to rerank
+
+    # Filter settings
+    temporal_filter_presets: Dict[str, str] = {
+        "last_week": "7 days",
+        "this_month": "30 days",
+        "this_quarter": "90 days",
+        "this_year": "365 days",
+        "last_month": "30 days",
+        "last_quarter": "90 days",
+        "last_year": "365 days",
+    }
+
+    # Metadata extraction settings
+    metadata_confidence_threshold: float = 0.5
+    enable_ner: bool = False  # Enable NER for company extraction (requires spaCy)
+
+    # BM25 index settings
+    bm25_index_refresh_interval: int = 3600  # Refresh index every hour (seconds)
+
     # CORS settings
     cors_origins: list[str] = ["*"]
     cors_allow_credentials: bool = True

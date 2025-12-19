@@ -1,4 +1,4 @@
-"""Vector retriever for semantic search."""
+"""Vector retriever for semantic search (backward compatible)."""
 from typing import List, Dict, Any, Optional
 from uuid import UUID
 from app.retrieval.vector_store import VectorStore
@@ -7,7 +7,12 @@ from app.config import settings
 
 
 class Retriever:
-    """Retriever for vector similarity search."""
+    """
+    Retriever for vector similarity search.
+
+    This class maintains backward compatibility for vector-only search.
+    For hybrid search, use HybridRetriever directly.
+    """
 
     def __init__(self, vector_store: VectorStore, llm_client: LLMServiceClient):
         """
@@ -30,7 +35,7 @@ class Retriever:
         user_id: str = "rag-service",
     ) -> List[Dict[str, Any]]:
         """
-        Retrieve relevant documents for a query.
+        Retrieve relevant documents for a query (vector-only).
 
         Args:
             query: Search query text
@@ -71,6 +76,7 @@ class Retriever:
                 {
                     "content": result.get("content", ""),
                     "similarity": result.get("similarity", 0.0),
+                    "vector_score": result.get("similarity", 0.0),  # Add for consistency
                     "metadata": result.get("metadata", {}),
                     "document_id": result.get("document_id"),
                     "chunk_id": result.get("id"),

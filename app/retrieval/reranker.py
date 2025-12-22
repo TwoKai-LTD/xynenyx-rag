@@ -54,21 +54,32 @@ class Reranker:
             return
 
         try:
-            logger.info(f"Loading reranker model: {self.model_name}")
+            logger.info(f"Loading reranker model: {self.model_name} (cache: {self.cache_dir})")
             # Set cache directory environment variables for sentence_transformers and HuggingFace
             # This ensures all underlying libraries use the writable cache directory
             hf_cache_dir = os.path.join(os.path.dirname(self.cache_dir), "huggingface")
             os.makedirs(hf_cache_dir, exist_ok=True)
             
+            # Set environment variables before model initialization
             os.environ["SENTENCE_TRANSFORMERS_HOME"] = self.cache_dir
             os.environ["HF_HOME"] = hf_cache_dir
             os.environ["TRANSFORMERS_CACHE"] = hf_cache_dir
             os.environ["HF_DATASETS_CACHE"] = hf_cache_dir
             
+            # Verify cache directory is writable before attempting to load model
+            test_file = os.path.join(self.cache_dir, ".test_write")
+            try:
+                with open(test_file, "w") as f:
+                    f.write("test")
+                os.remove(test_file)
+            except (OSError, PermissionError) as e:
+                logger.error(f"Cache directory {self.cache_dir} is not writable: {e}")
+                raise
+            
             self.model = CrossEncoder(self.model_name, cache_folder=self.cache_dir)
             self._model_loaded = True
             logger.info("Reranker model loaded successfully")
-        except Exception as e:
+        except (OSError, PermissionError, Exception) as e:
             logger.warning(f"Error loading reranker model: {e}. Reranking will be disabled.")
             self._model_load_failed = True
             self.model = None

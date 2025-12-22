@@ -88,18 +88,23 @@ async def query(
         # Rerank if enabled
         reranking_enabled = False
         if request.use_reranking and results:
-            # Rerank top N results
-            results_to_rerank = results[: request.rerank_top_n]
-            reranked = _reranker.rerank(
-                query=request.query,
-                documents=results_to_rerank,
-                top_k=request.top_k,
-            )
-            # Combine reranked with remaining results
-            reranked_ids = {r.get("chunk_id") for r in reranked}
-            remaining = [r for r in results[request.rerank_top_n :] if r.get("chunk_id") not in reranked_ids]
-            results = reranked + remaining
-            reranking_enabled = True
+            try:
+                # Rerank top N results
+                results_to_rerank = results[: request.rerank_top_n]
+                reranked = _reranker.rerank(
+                    query=request.query,
+                    documents=results_to_rerank,
+                    top_k=request.top_k,
+                )
+                # Combine reranked with remaining results
+                reranked_ids = {r.get("chunk_id") for r in reranked}
+                remaining = [r for r in results[request.rerank_top_n :] if r.get("chunk_id") not in reranked_ids]
+                results = reranked + remaining
+                reranking_enabled = True
+            except Exception as e:
+                logger.warning(f"Reranking failed, using original results: {e}")
+                # Continue with original results (reranking is optional)
+                reranking_enabled = False
 
         # Take top-k final results
         results = results[: request.top_k]

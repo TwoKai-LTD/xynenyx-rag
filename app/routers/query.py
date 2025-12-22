@@ -1,4 +1,5 @@
 """API routes for vector search queries with hybrid search and reranking."""
+import logging
 from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
 from app.schemas.queries import QueryRequest, QueryResponse, QueryResult
@@ -10,6 +11,8 @@ from app.retrieval.reranker import Reranker
 from app.retrieval.filters import TemporalFilter, EntityFilter
 from app.clients.supabase import SupabaseClient
 from app.clients.llm import LLMServiceClient
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/query", tags=["query"])
 
@@ -135,4 +138,5 @@ async def query(
             reranking_enabled=reranking_enabled,
         )
     except Exception as e:
+        logger.error(f"Query failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}") from e

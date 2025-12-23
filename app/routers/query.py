@@ -112,19 +112,19 @@ async def query(
         # Format results
         query_results = []
         for result in results:
-            # Determine similarity score (prefer normalized scores, clamp to 0-1)
-            # Priority: rerank_score (0-1) > vector_score (0-1) > similarity > rrf_score (may be > 1)
+            # Determine similarity score (use highest available)
+            # Priority: rerank_score (0-1) > rrf_score (may be > 1) > vector_score (0-1) > similarity (may be negative)
             raw_similarity = (
                 result.get("rerank_score")
+                or result.get("rrf_score")
                 or result.get("vector_score")
                 or result.get("similarity")
-                or result.get("rrf_score")
                 or 0.0
             )
             
-            # Normalize similarity to 0-1 range (clamp if > 1, ensure >= 0)
-            # RRF and BM25 scores can be > 1, so we clamp them to 1.0
-            similarity = max(0.0, min(1.0, raw_similarity))
+            # Normalize similarity to 0-1 range (clamp negative values to 0, values > 1 to 1)
+            # RRF scores can be > 1, and some similarity metrics can be negative
+            similarity = max(0.0, min(1.0, float(raw_similarity)))
 
             query_results.append(
                 QueryResult(

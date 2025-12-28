@@ -13,6 +13,7 @@ from app.retrieval.multi_query import MultiQueryRetriever
 from app.retrieval.filters import TemporalFilter, EntityFilter
 from app.clients.supabase import SupabaseClient
 from app.clients.llm import LLMServiceClient
+from app.services.cache import QueryCache
 
 logger = logging.getLogger(__name__)
 

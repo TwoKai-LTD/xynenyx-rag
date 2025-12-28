@@ -1,5 +1,6 @@
 """API routes for vector search queries with hybrid search and reranking."""
 import logging
+import math
 from fastapi import APIRouter, HTTPException, Header
 from typing import Optional
 from app.schemas.queries import QueryRequest, QueryResponse, QueryResult
@@ -13,6 +14,18 @@ from app.clients.supabase import SupabaseClient
 from app.clients.llm import LLMServiceClient
 
 logger = logging.getLogger(__name__)
+
+
+def sanitize_float(value: float) -> float:
+    """Sanitize float values to ensure JSON compliance.
+    
+    Converts inf, -inf, and nan to valid float values.
+    """
+    if math.isnan(value):
+        return 0.0
+    if math.isinf(value):
+        return 1.0 if value > 0 else 0.0
+    return value
 
 router = APIRouter(prefix="/query", tags=["query"])
 
@@ -122,9 +135,18 @@ async def query(
                 or 0.0
             )
             
-            # Normalize similarity to 0-1 range (clamp negative values to 0, values > 1 to 1)
-            # RRF scores can be > 1, and some similarity metrics can be negative
-            similarity = max(0.0, min(1.0, float(raw_similarity)))
+            # Sanitize and normalize similarity to 0-1 range
+            # Handle inf, -inf, nan, negative values, and values > 1
+            raw_float = float(raw_similarity)
+            sanitized = sanitize_float(raw_float)
+            similarity = max(0.0, min(1.0, sanitized))
+
+            # Sanitize all score fields to ensure JSON compliance
+            rerank_score = sanitize_float(float(result.get("rerank_score"))) if result.get("rerank_score") is not None else None
+            bm25_score = sanitize_float(float(result.get("bm25_score"))) if result.get("bm25_score") is not None else None
+            vector_score_raw = result.get("vector_score") or result.get("similarity")
+            vector_score = sanitize_float(float(vector_score_raw)) if vector_score_raw is not None else None
+            rrf_score = sanitize_float(float(result.get("rrf_score"))) if result.get("rrf_score") is not None else None
 
             query_results.append(
                 QueryResult(
@@ -133,10 +155,10 @@ async def query(
                     metadata=result.get("metadata", {}),
                     document_id=str(result.get("document_id", "")),
                     chunk_id=str(result.get("chunk_id", "")),
-                    rerank_score=result.get("rerank_score"),
-                    bm25_score=result.get("bm25_score"),
-                    vector_score=result.get("vector_score") or result.get("similarity"),
-                    rrf_score=result.get("rrf_score"),
+                    rerank_score=rerank_score,
+                    bm25_score=bm25_score,
+                    vector_score=vector_score,
+                    rrf_score=rrf_score,
                 )
             )
 

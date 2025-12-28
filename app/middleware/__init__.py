@@ -1,0 +1,2 @@
+"""Middleware for RAG service."""
+

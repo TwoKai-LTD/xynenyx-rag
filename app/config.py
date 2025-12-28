@@ -66,6 +66,7 @@ class Settings(BaseSettings):
     use_reranking: bool = True
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     rerank_top_n: int = 20  # Top N results to rerank
+    reranker_cache_dir: str | None = None  # Custom cache directory (defaults to user cache)
 
     # Filter settings
     temporal_filter_presets: Dict[str, str] = {
@@ -92,12 +93,32 @@ class Settings(BaseSettings):
     cors_allow_headers: list[str] = ["*"]
 
     @model_validator(mode="after")
-    def resolve_service_role_key(self):
-        """Resolve service role key from either variable name."""
+    def validate_config(self):
+        """Validate all required configuration."""
+        errors = []
+        
+        # Resolve service role key
         if not self.supabase_service_role_key and self.supabase_service_key:
             self.supabase_service_role_key = self.supabase_service_key
+        
+        # Validate Supabase
+        if not self.supabase_url:
+            errors.append("SUPABASE_URL is required")
+        elif not self.supabase_url.startswith("http"):
+            errors.append("SUPABASE_URL must be a valid HTTP/HTTPS URL")
+        
         if not self.supabase_service_role_key:
-            raise ValueError("Either supabase_service_role_key or supabase_service_key must be set")
+            errors.append("Either SUPABASE_SERVICE_ROLE_KEY or SUPABASE_SERVICE_KEY must be set")
+        
+        # Validate LLM service URL
+        if not self.llm_service_url:
+            errors.append("LLM_SERVICE_URL is required")
+        elif not self.llm_service_url.startswith("http"):
+            errors.append("LLM_SERVICE_URL must be a valid HTTP/HTTPS URL")
+        
+        if errors:
+            raise ValueError(f"Configuration errors: {', '.join(errors)}")
+        
         return self
 
     model_config = SettingsConfigDict(

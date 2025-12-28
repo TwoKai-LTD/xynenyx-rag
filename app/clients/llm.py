@@ -3,6 +3,7 @@ import asyncio
 from typing import List, Optional
 import httpx
 from app.config import settings
+from app.services.cache import EmbeddingCache
 
 
 class LLMServiceClient:
@@ -15,6 +16,7 @@ class LLMServiceClient:
         self.batch_size = settings.embedding_batch_size
         self.max_retries = settings.embedding_max_retries
         self.retry_delay = settings.embedding_retry_delay
+        self.embedding_cache = EmbeddingCache(ttl_seconds=86400 * 7)  # 7 days
 
     async def generate_embedding(
         self,
@@ -36,6 +38,11 @@ class LLMServiceClient:
         Raises:
             Exception: If embedding generation fails after retries
         """
+        # Check cache first
+        cached_embedding = self.embedding_cache.get(text)
+        if cached_embedding:
+            return cached_embedding
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             try:
                 response = await client.post(
@@ -45,7 +52,12 @@ class LLMServiceClient:
                 )
                 response.raise_for_status()
                 data = response.json()
-                return data["embedding"]
+                embedding = data["embedding"]
+                
+                # Cache the embedding
+                self.embedding_cache.set(text, embedding)
+                
+                return embedding
             except Exception as e:
                 if retry_count < self.max_retries:
                     await asyncio.sleep(self.retry_delay * (2 ** retry_count))

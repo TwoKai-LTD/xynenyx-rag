@@ -15,6 +15,12 @@ class QueryRequest(BaseModel):
     use_hybrid_search: bool = Field(
         default=True, description="Use hybrid search (BM25 + vector)"
     )
+    use_multi_query: bool = Field(
+        default=False, description="Use multi-query retrieval (generates query variations)"
+    )
+    query_variations: Optional[List[str]] = Field(
+        None, description="Optional pre-generated query variations for multi-query retrieval"
+    )
     use_reranking: bool = Field(default=True, description="Enable reranking")
     rerank_top_n: int = Field(
         default=20, ge=1, le=100, description="Top N results to rerank"

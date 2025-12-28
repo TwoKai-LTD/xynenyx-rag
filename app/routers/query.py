@@ -9,6 +9,7 @@ from app.retrieval.bm25_retriever import BM25RetrieverWrapper
 from app.retrieval.vector_store import VectorStore
 from app.retrieval.retriever import Retriever
 from app.retrieval.reranker import Reranker
+from app.retrieval.multi_query import MultiQueryRetriever
 from app.retrieval.filters import TemporalFilter, EntityFilter
 from app.clients.supabase import SupabaseClient
 from app.clients.llm import LLMServiceClient
@@ -35,10 +36,12 @@ _vector_store = VectorStore(_supabase_client)
 _llm_client = LLMServiceClient()
 _bm25_retriever = BM25RetrieverWrapper(_supabase_client)
 _hybrid_retriever = HybridRetriever(_bm25_retriever, _vector_store, _llm_client)
+_multi_query_retriever = MultiQueryRetriever(_hybrid_retriever, _llm_client)
 _vector_only_retriever = Retriever(_vector_store, _llm_client)
 _reranker = Reranker()
 _temporal_filter = TemporalFilter()
 _entity_filter = EntityFilter()
+_query_cache = QueryCache(ttl_seconds=3600)  # 1 hour cache
 
 
 @router.post("", response_model=QueryResponse)
@@ -60,11 +63,42 @@ async def query(
         raise HTTPException(status_code=401, detail="X-User-ID header required")
 
     try:
+        # Check cache first
+        cache_filters = {}
+        if request.date_filter:
+            cache_filters["date_filter"] = request.date_filter
+        if request.company_filter:
+            cache_filters["company_filter"] = request.company_filter
+        if request.investor_filter:
+            cache_filters["investor_filter"] = request.investor_filter
+        if request.sector_filter:
+            cache_filters["sector_filter"] = request.sector_filter
+        
+        cached_results = _query_cache.get(request.query, cache_filters if cache_filters else None)
+        if cached_results:
+            logger.info("Returning cached query results")
+            return QueryResponse(
+                query=request.query,
+                results=cached_results.get("results", []),
+                count=cached_results.get("count", 0),
+                search_mode=cached_results.get("search_mode", "vector"),
+                reranking_enabled=cached_results.get("reranking_enabled", False),
+            )
+
         search_mode = "vector"
         results = []
 
         # Determine search mode and retrieve
-        if request.use_hybrid_search:
+        if request.use_multi_query:
+            # Multi-query retrieval (generates variations and merges results)
+            search_mode = "multi_query"
+            results = await _multi_query_retriever.retrieve(
+                query=request.query,
+                top_k=request.top_k * 2,  # Get more results for reranking
+                query_variations=request.query_variations,
+                user_id=x_user_id,
+            )
+        elif request.use_hybrid_search:
             # Hybrid search (BM25 + Vector with RRF)
             search_mode = "hybrid"
             results = await _hybrid_retriever.retrieve(
@@ -162,13 +196,27 @@ async def query(
                 )
             )
 
-        return QueryResponse(
+        response = QueryResponse(
             query=request.query,
             results=query_results,
             count=len(query_results),
             search_mode=search_mode,
             reranking_enabled=reranking_enabled,
         )
+        
+        # Cache results
+        _query_cache.set(
+            request.query,
+            {
+                "results": query_results,
+                "count": len(query_results),
+                "search_mode": search_mode,
+                "reranking_enabled": reranking_enabled,
+            },
+            cache_filters if cache_filters else None,
+        )
+        
+        return response
     except Exception as e:
         logger.error(f"Query failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Query failed: {str(e)}") from e

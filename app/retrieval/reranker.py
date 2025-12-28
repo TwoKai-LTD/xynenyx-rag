@@ -22,8 +22,9 @@ class Reranker:
 
     def _get_cache_dir(self) -> str:
         """Get cache directory for reranker model."""
-        if settings.reranker_cache_dir:
-            cache_dir = settings.reranker_cache_dir
+        reranker_cache_dir = getattr(settings, 'reranker_cache_dir', None)
+        if reranker_cache_dir:
+            cache_dir = reranker_cache_dir
         else:
             # Default to user cache directory or /tmp as fallback
             home_dir = os.path.expanduser("~")

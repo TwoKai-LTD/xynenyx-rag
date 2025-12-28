@@ -3,17 +3,17 @@ FROM python:3.11-slim AS builder
 
 WORKDIR /build
 
-# Install Poetry
-RUN pip install --no-cache-dir poetry==1.7.1
+# Copy requirements file
+COPY requirements.txt ./
 
-# Copy dependency files
-COPY pyproject.toml poetry.lock* ./
+# Install dependencies with retry logic for network timeouts
+RUN pip install --no-cache-dir --upgrade pip && \
+    (pip install --no-cache-dir -r requirements.txt || \
+     (echo "First attempt failed, retrying..." && sleep 30 && pip install --no-cache-dir -r requirements.txt) || \
+     (echo "Second attempt failed, retrying..." && sleep 60 && pip install --no-cache-dir -r requirements.txt))
 
-# Configure Poetry: Don't create virtual env, install to system
-RUN poetry config virtualenvs.create false
-
-# Install dependencies
-RUN poetry install --no-interaction --no-ansi --only=main
+# Pre-download NLTK data to avoid permission issues at runtime
+RUN python -c "import nltk; nltk.download('punkt_tab', quiet=True)" || true
 
 # Final stage
 FROM python:3.11-slim
@@ -22,6 +22,9 @@ WORKDIR /app
 
 # Create non-root user
 RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+# Create writable directory for NLTK data
+RUN mkdir -p /home/appuser/nltk_data && chown -R appuser:appuser /home/appuser/nltk_data
 
 # Copy installed packages from builder
 COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
@@ -32,6 +35,9 @@ COPY app ./app
 
 # Set ownership
 RUN chown -R appuser:appuser /app
+
+# Set NLTK data directory environment variable
+ENV NLTK_DATA=/home/appuser/nltk_data
 
 USER appuser
 
